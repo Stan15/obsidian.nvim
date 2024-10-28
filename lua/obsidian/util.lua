@@ -462,34 +462,88 @@ util.get_os = function()
   return this_os
 end
 
----Get the strategy for opening notes
+local function is_current_buffer_floating()
+  local win_id = vim.api.nvim_get_current_win()
+  local config = vim.api.nvim_win_get_config(win_id)
+  return config.relative ~= ""
+end
+
+---Resolves the actual open strategy to use, considering the user's configured
+---open strategy and the current window state
 ---
 ---@param opt obsidian.config.OpenStrategy
 ---@return string
-util.get_open_strategy = function(opt)
+util.resolve_open_strategy = function(opt)
   local OpenStrategy = require("obsidian.config").OpenStrategy
-
+  opt = util.strip_whitespace(opt) or OpenStrategy.current
   -- either 'leaf', 'row' for vertically split windows, or 'col' for horizontally split windows
   local cur_layout = vim.fn.winlayout()[1]
 
-  if vim.startswith(OpenStrategy.hsplit, opt) then
-    if cur_layout ~= "col" then
-      return "split "
-    else
-      return "e "
-    end
-  elseif vim.startswith(OpenStrategy.vsplit, opt) then
-    if cur_layout ~= "row" then
-      return "vsplit "
-    else
-      return "e "
-    end
+  if vim.startswith(OpenStrategy.hsplit, opt) and cur_layout ~= "col" then
+    return OpenStrategy.hsplit
+  elseif vim.startswith(OpenStrategy.vsplit, opt) and cur_layout ~= "row" then
+    return OpenStrategy.vsplit
+  elseif vim.startswith(OpenStrategy.float, opt) and not is_current_buffer_floating() then
+    return OpenStrategy.float
   elseif vim.startswith(OpenStrategy.current, opt) then
-    return "e "
+    return OpenStrategy.current
   else
     log.err("undefined open strategy '%s'", opt)
-    return "e "
+    return OpenStrategy.current
   end
+end
+
+---Get the callback action for opening notes
+---
+---@param opt obsidian.config.OpenStrategy
+---@return function
+util.get_open_action = function(opt)
+  local strategy = util.resolve_open_strategy(opt)
+
+  local OpenStrategy = require("obsidian.config").OpenStrategy
+  return function(path)
+    local filename = vim.fn.fnameescape(tostring(path))
+
+    -- Check for buffer in windows and use 'drop' command if one is found.
+    for _, winnr in ipairs(vim.api.nvim_list_wins()) do
+      local bufnr = vim.api.nvim_win_get_buf(winnr)
+      local bufname = vim.api.nvim_buf_get_name(bufnr)
+      if bufname == tostring(path) then
+        vim.cmd("drop " .. filename)
+        return bufnr
+      end
+    end
+
+    if strategy == OpenStrategy.hsplit then
+      vim.cmd("split " .. filename)
+    elseif strategy == OpenStrategy.vsplit then
+      vim.cmd("vsplit " .. filename)
+    elseif strategy == OpenStrategy.float then
+      return util.open_in_float(filename)
+    else
+      vim.cmd("e " .. filename)
+    end
+  end
+end
+
+---Open file in a floating window
+---@param path string|obsidian.Path
+util.open_in_float = function(path)
+  local width = math.floor(vim.o.columns * 0.8)
+  local height = math.floor(vim.o.lines * 0.8)
+  local buf = vim.api.nvim_create_buf(false, true)
+  local opts = {
+    relative = 'editor',
+    width = width,
+    height = height,
+    col = math.floor((vim.o.columns - width) / 2),
+    row = math.floor((vim.o.lines - height) / 2),
+    style = 'minimal',
+    border = 'rounded'
+  }
+  local win = vim.api.nvim_open_win(buf, true, opts)
+  vim.api.nvim_command('edit ' .. vim.fn.fnameescape(tostring(path)))
+  return buf
 end
 
 ---Create a new unique Zettel ID.
@@ -1064,30 +1118,18 @@ end
 --- Open a buffer for the corresponding path.
 ---
 ---@param path string|obsidian.Path
----@param opts { line: integer|?, col: integer|?, cmd: string|? }|?
+---@param opts { line: integer|?, col: integer|?, strategy: string|? }|?
 ---@return integer bufnr
 util.open_buffer = function(path, opts)
   local Path = require "obsidian.path"
 
   path = Path.new(path):resolve()
   opts = opts and opts or {}
-  local cmd = util.strip_whitespace(opts.cmd and opts.cmd or "e")
+  local open_action = util.get_open_action(opts.strategy)
 
   ---@type integer|?
-  local result_bufnr
+  local result_bufnr = open_action(path)
 
-  -- Check for buffer in windows and use 'drop' command if one is found.
-  for _, winnr in ipairs(vim.api.nvim_list_wins()) do
-    local bufnr = vim.api.nvim_win_get_buf(winnr)
-    local bufname = vim.api.nvim_buf_get_name(bufnr)
-    if bufname == tostring(path) then
-      cmd = "drop"
-      result_bufnr = bufnr
-      break
-    end
-  end
-
-  vim.cmd(string.format("%s %s", cmd, vim.fn.fnameescape(tostring(path))))
   if opts.line then
     vim.api.nvim_win_set_cursor(0, { tonumber(opts.line), opts.col and opts.col or 0 })
   end
