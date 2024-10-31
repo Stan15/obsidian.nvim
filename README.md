@@ -443,6 +443,7 @@ This is a complete list of all of the options that can be passed to `require("ob
   -- 1. "current" (the default) - to always open in the current window
   -- 2. "vsplit" - to open in a vertical split if there's not already a vertical split
   -- 3. "hsplit" - to open in a horizontal split if there's not already a horizontal split
+  -- 4. "float" - to open in a floating window if there's not already a floating window
   open_notes_in = "current",
 
   -- Optional, define your own callbacks to further customize behavior.

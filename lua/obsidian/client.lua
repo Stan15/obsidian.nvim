@@ -977,7 +977,7 @@ Client.open_note = function(self, note_or_path, opts)
 
   local function open_it()
     ---@cast path obsidian.Path
-    local bufnr = util.open_buffer(path, { line = opts.line, col = opts.col, strategy = opts.open_strategy and opts.open_strategy or self.opts.open_notes_in })
+    local bufnr = util.open_buffer(path, { line = opts.line, col = opts.col, strategy = opts.open_strategy or self.opts.open_notes_in })
     if opts.callback then
       opts.callback(bufnr)
     end
