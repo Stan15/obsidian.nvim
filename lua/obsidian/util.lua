@@ -539,7 +539,8 @@ util.open_in_float = function(path)
     col = math.floor((vim.o.columns - width) / 2),
     row = math.floor((vim.o.lines - height) / 2),
     style = 'minimal',
-    border = 'rounded'
+    border = 'rounded',
+    zindex = 60
   }
   local win = vim.api.nvim_open_win(buf, true, opts)
   vim.api.nvim_command('edit ' .. vim.fn.fnameescape(tostring(path)))
